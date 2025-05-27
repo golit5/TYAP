@@ -204,17 +204,66 @@ class Symbol:
     def __repr__(self):
         return f"Symbol(name={self.name}, type={self.type}, value={self.value})"
 
+class HashTable:
+    def __init__(self, size=10):
+        self.size = size
+        self.table = [[] for _ in range(size)]  # Реализация методом цепочек
+
+    def _hash(self, key):
+        """Простая хеш-функция для строковых ключей"""
+        return sum(ord(char) for char in key) % self.size
+
+    def insert(self, key, value):
+        """Вставка или обновление значения по ключу"""
+        hash_key = self._hash(key)
+        bucket = self.table[hash_key]
+        
+        # Проверяем, есть ли уже такой ключ в цепочке
+        for i, (k, v) in enumerate(bucket):
+            if k == key:
+                bucket[i] = (key, value)
+                return
+        # Если ключ не найден, добавляем новую пару
+        bucket.append((key, value))
+
+    def get(self, key):
+        """Получение значения по ключу"""
+        hash_key = self._hash(key)
+        bucket = self.table[hash_key]
+        
+        for k, v in bucket:
+            if k == key:
+                return v
+        return None
+
+    def delete(self, key):
+        """Удаление значения по ключу"""
+        hash_key = self._hash(key)
+        bucket = self.table[hash_key]
+        
+        for i, (k, v) in enumerate(bucket):
+            if k == key:
+                del bucket[i]
+                return
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        """Проверка наличия ключа"""
+        return self.get(key) is not None
+
 class SymbolTable:
     def __init__(self):
-        self.symbols = {}  # Просто словарь для хранения Symbol объектов
-    
+        self.table = HashTable()  # Используем нашу хеш-таблицу
+
     def define(self, symbol):
-        if symbol.name in self.symbols:
+        """Добавляем символ в таблицу"""
+        if symbol.name in self.table:  # Используем __contains__ из HashTable
             raise NameError(f"Переменная {symbol.name} уже объявлена")
-        self.symbols[symbol.name] = symbol
-    
+        self.table.insert(symbol.name, symbol)
+
     def lookup(self, name):
-        return self.symbols.get(name)
+        """Поиск символа по имени"""
+        return self.table.get(name)
 
 # Абстрактное синтаксическое дерево
 class AST:
