@@ -28,7 +28,7 @@
     end.
 
     program var
-        x, y: %, result: $;
+        x, y: %; result: $;
     begin
         x ass 5;
         y ass 10;
@@ -72,8 +72,10 @@
         write(a)
     end.
 
+    {9}
+
     program var
-        a, b: %, c: $;
+        a, b: %; c: $;
     begin
         a ass 10;
         b ass 20;
@@ -95,8 +97,10 @@
             write(300)
     end.
 
+    {11}
+
     program var
-        a, b: %, c: !;
+        a, b: %; c: !;
     begin
         a ass 10;
         b ass 0;
@@ -105,7 +109,7 @@
     end.
 
     program var
-        a: %;
+        a: %; b: %;
     begin
         a ass 5;
         b ass 10;
@@ -113,7 +117,6 @@
     end.
 
     program var
-        a: %;
         a: %;
     begin
         a ass 5;

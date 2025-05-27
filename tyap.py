@@ -448,8 +448,10 @@ class Parser:
             return self.variable()
         elif token.type == TokenType.LITERAL:
             return self.literal()
-        elif token.type == TokenType.BOOLEAN:
-            return self.literal()
+        elif token.type == TokenType.BOOLEAN:  # Добавьте эту ветку
+            node = Literal(self.current_token)
+            self.eat(TokenType.BOOLEAN)
+            return node
 
         else:
             self.error()
@@ -639,6 +641,17 @@ class Interpreter:
         
         raise ValueError(f"Неизвестный бинарный оператор: {node.op.value}")
 
+    def visit_UnaryOp(self, node):
+        """Обработка унарных операций: +, -, not"""
+        if node.op.type == TokenType.OP_UN and node.op.value == 'not':
+            return not self.visit(node.expr)
+        elif node.op.type == TokenType.OP_ADD and node.op.value == '+':
+            return +self.visit(node.expr)
+        elif node.op.type == TokenType.OP_ADD and node.op.value == '-':
+            return -self.visit(node.expr)
+        else:
+            raise ValueError(f"Неизвестный унарный оператор: {node.op.value}")
+
     def visit_NoOp(self, node):
         pass
 
@@ -708,7 +721,7 @@ def main():
     end.
 
     program var
-        x, y: %, result: $;
+        x, y: %; result: $;
     begin
         x ass 5;
         y ass 10;
@@ -752,8 +765,10 @@ def main():
         write(a)
     end.
 
+    {9}
+
     program var
-        a, b: %, c: $;
+        a, b: %; c: $;
     begin
         a ass 10;
         b ass 20;
@@ -775,8 +790,10 @@ def main():
             write(300)
     end.
 
+    {11}
+
     program var
-        a, b: %, c: !;
+        a, b: %; c: !;
     begin
         a ass 10;
         b ass 0;
@@ -785,7 +802,7 @@ def main():
     end.
 
     program var
-        a: %;
+        a: %; b: %;
     begin
         a ass 5;
         b ass 10;
@@ -793,7 +810,6 @@ def main():
     end.
 
     program var
-        a: %;
         a: %;
     begin
         a ass 5;
