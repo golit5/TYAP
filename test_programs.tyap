@@ -1,0 +1,130 @@
+
+    program var
+        a, b, c: %;
+    begin
+        a ass 5;
+        b ass 3;
+        c ass (a + b) * 2;
+        write(c)
+    end.
+
+    program var
+        a, b: %;
+    begin
+        a ass 10;
+        b ass 20;
+        if a < b then
+            write(a)
+        else
+            write(b)
+    end.
+
+    program var
+        flag1, flag2: $;
+    begin
+        flag1 ass true;
+        flag2 ass not flag1;
+        write(flag2)
+    end.
+
+    program var
+        x, y: %, result: $;
+    begin
+        x ass 5;
+        y ass 10;
+        result ass (x < y) and (y > 0);
+        write(result)
+    end.
+
+    program var
+        a, b, c: $;
+    begin
+        a ass true;
+        b ass false;
+        c ass a or b;
+        write(c)
+    end.
+
+    program var
+        a, b, c: !;
+    begin
+        a ass 10.0;
+        b ass 3.0;
+        c ass a / b;
+        write(c)
+    end.
+
+    program var
+        i, sum: %;
+    begin
+        sum ass 0;
+        for i ass 1 to 5 do
+            sum ass sum + i;
+        write(sum)
+    end.
+
+    program var
+        a: %;
+    begin
+        a ass 5;
+        while a > 0 do
+            a ass a - 1;
+        write(a)
+    end.
+
+    program var
+        a, b: %, c: $;
+    begin
+        a ass 10;
+        b ass 20;
+        c ass a <= b;
+        write(c)
+    end.
+
+    program var
+        a, b: %;
+    begin
+        a ass 10;
+        b ass 20;
+        if a < b then
+            if a = 10 then
+                write(100)
+            else
+                write(200)
+        else
+            write(300)
+    end.
+
+    program var
+        a, b: %, c: !;
+    begin
+        a ass 10;
+        b ass 0;
+        c ass a / b;
+        write(c)
+    end.
+
+    program var
+        a: %;
+    begin
+        a ass 5;
+        b ass 10;
+        write(a)
+    end.
+
+    program var
+        a: %;
+        a: %;
+    begin
+        a ass 5;
+        write(a)
+    end.
+
+    program var
+        a, b: %;
+    begin
+        read(a, b);
+        a ass a + b;
+        write(a)
+    end.
+    

@@ -358,13 +358,18 @@ class Parser:
         return compound
     
     def statement(self):
-        """statement : compound_statement | assignment_statement | if_statement | for_statement | while_statement | read_statement | write_statement | empty"""
         if self.current_token.type == TokenType.BEGIN:
             return self.compound_statement()
         elif self.current_token.type == TokenType.ID:
             return self.assignment_statement()
         elif self.current_token.type == TokenType.IF:
             return self.if_statement()
+        elif self.current_token.type == TokenType.FOR:
+            return self.for_statement()
+        elif self.current_token.type == TokenType.WHILE:
+            return self.while_statement()
+        elif self.current_token.type == TokenType.READ:
+            return self.read_statement()
         elif self.current_token.type == TokenType.WRITE:
             return self.write_statement()
         else:
@@ -443,6 +448,9 @@ class Parser:
             return self.variable()
         elif token.type == TokenType.LITERAL:
             return self.literal()
+        elif token.type == TokenType.BOOLEAN:
+            return self.literal()
+
         else:
             self.error()
     
@@ -482,6 +490,35 @@ class Parser:
         if self.current_token.type != TokenType.EOF:
             self.error()
         return node
+
+    def for_statement(self):
+        self.eat(TokenType.FOR)
+        assign = self.assignment_statement()
+        self.eat(TokenType.TO)
+        final_value = self.expr()
+        self.eat(TokenType.DO)
+        body = self.statement()
+        return (assign, final_value, body)
+
+    def while_statement(self):
+        self.eat(TokenType.WHILE)
+        condition = self.expr()
+        self.eat(TokenType.DO)
+        body = self.statement()
+        return (condition, body)
+    
+    def read_statement(self):
+        self.eat(TokenType.READ)
+        self.eat(TokenType.LPAREN)
+        vars = [self.variable()]
+        while self.current_token.type == TokenType.COMMA:
+            self.eat(TokenType.COMMA)
+            vars.append(self.variable())
+        self.eat(TokenType.RPAREN)
+        return vars
+
+
+
 
 # Интерпретатор
 class Interpreter:
@@ -605,21 +642,210 @@ class Interpreter:
     def visit_NoOp(self, node):
         pass
 
+    def visit_If(self, node):
+        condition = self.visit(node.condition)
+        if condition:
+            self.visit(node.true_branch)
+        elif node.false_branch is not None:
+            self.visit(node.false_branch)
+
+    def visit_tuple(self, node):
+        if len(node) == 3:
+            # for: (assign, final_value, body)
+            assign, final_value_expr, body = node
+            self.visit(assign)
+            var_name = assign.left.value
+            final_value = self.visit(final_value_expr)
+            while self.symtab.lookup(var_name).value <= final_value:
+                self.visit(body)
+                self.symtab.lookup(var_name).value += 1
+        elif len(node) == 2:
+            # while: (condition, body)
+            condition, body = node
+            while self.visit(condition):
+                self.visit(body)
+
+    def visit_list(self, node):
+        for var in node:
+            var_name = var.value
+            symbol = self.symtab.lookup(var_name)
+            if symbol is None:
+                raise NameError(f"Переменная '{var_name}' не объявлена")
+            # тестово присваиваем 1
+            symbol.value = 1
+
+    
+
 def main():
-    text = """
+    # Создадим файл с тестовыми программами
+    test_programs = """
     program var
-        x, y: %;
+        a, b, c: %;
     begin
-        x ass 10;
-        y ass x * 2;
-        write(y)
+        a ass 5;
+        b ass 3;
+        c ass (a + b) * 2;
+        write(c)
+    end.
+
+    program var
+        a, b: %;
+    begin
+        a ass 10;
+        b ass 20;
+        if a < b then
+            write(a)
+        else
+            write(b)
+    end.
+
+    program var
+        flag1, flag2: $;
+    begin
+        flag1 ass true;
+        flag2 ass not flag1;
+        write(flag2)
+    end.
+
+    program var
+        x, y: %, result: $;
+    begin
+        x ass 5;
+        y ass 10;
+        result ass (x < y) and (y > 0);
+        write(result)
+    end.
+
+    program var
+        a, b, c: $;
+    begin
+        a ass true;
+        b ass false;
+        c ass a or b;
+        write(c)
+    end.
+
+    program var
+        a, b, c: !;
+    begin
+        a ass 10.0;
+        b ass 3.0;
+        c ass a / b;
+        write(c)
+    end.
+
+    program var
+        i, sum: %;
+    begin
+        sum ass 0;
+        for i ass 1 to 5 do
+            sum ass sum + i;
+        write(sum)
+    end.
+
+    program var
+        a: %;
+    begin
+        a ass 5;
+        while a > 0 do
+            a ass a - 1;
+        write(a)
+    end.
+
+    program var
+        a, b: %, c: $;
+    begin
+        a ass 10;
+        b ass 20;
+        c ass a <= b;
+        write(c)
+    end.
+
+    program var
+        a, b: %;
+    begin
+        a ass 10;
+        b ass 20;
+        if a < b then
+            if a = 10 then
+                write(100)
+            else
+                write(200)
+        else
+            write(300)
+    end.
+
+    program var
+        a, b: %, c: !;
+    begin
+        a ass 10;
+        b ass 0;
+        c ass a / b;
+        write(c)
+    end.
+
+    program var
+        a: %;
+    begin
+        a ass 5;
+        b ass 10;
+        write(a)
+    end.
+
+    program var
+        a: %;
+        a: %;
+    begin
+        a ass 5;
+        write(a)
+    end.
+
+    program var
+        a, b: %;
+    begin
+        read(a, b);
+        a ass a + b;
+        write(a)
     end.
     """
+
+
+    # Запишем в файл
+    with open('./test_programs.tyap', 'w') as f:
+        f.write(test_programs)
+
+
+    # Функция для тестирования программы на синтаксический разбор
+    def test_syntax(text):
+        try:
+            lexer = Lexer(text)
+            parser = Parser(lexer)
+            parser.parse()
+            return "OK"
+        except Exception as e:
+            return str(e)
     
-    lexer = Lexer(text)
-    parser = Parser(lexer)
-    interpreter = Interpreter(parser)
-    interpreter.interpret()
+    def test_exec(text):
+        try:
+            lexer = Lexer(text)
+            parser = Parser(lexer)
+            interpreter = Interpreter(parser)
+            interpreter.interpret()
+            return "OK"
+        except Exception as e:
+            return str(e)
+
+    # Разделим по программам (по вхождениям 'program var')
+    program_list = test_programs.strip().split("program var")
+    program_list = ["program var" + p for p in program_list if p.strip()]
+
+    # Проверим каждую
+    results = [test_syntax(p) for p in program_list]
+    print(results)
+
+    results1 = [test_exec(p) for p in program_list]
+    print(results1)
+
 
 if __name__ == '__main__':
     main()
