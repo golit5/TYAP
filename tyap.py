@@ -37,7 +37,7 @@ class TokenType(Enum):
 
 # Класс токена
 class Token:
-    def __init__(self, type: TokenType, value=None):
+    def __init__(self, type: TokenType, value: int | str | None =None ):
         self.type = type
         self.value = value
     
@@ -46,7 +46,7 @@ class Token:
 
 # Лексический анализатор
 class Lexer:
-    def __init__(self, text):
+    def __init__(self, text : str):
         self.text = text
         self.pos = 0
         self.current_char = self.text[self.pos] if self.text else None
@@ -71,12 +71,20 @@ class Lexer:
         if self.current_char == '}':
             self.advance()
     
-    def integer(self):
+    def number(self):
         result = ''
         while self.current_char is not None and self.current_char.isdigit():
             result += self.current_char
             self.advance()
-        return int(result)
+        
+        if self.current_char == '.':
+            result += '.'
+            self.advance()
+            while self.current_char is not None and self.current_char.isdigit():
+                result += self.current_char
+                self.advance()
+            return Token(TokenType.LITERAL, float(result))
+        return Token(TokenType.LITERAL, int(result))
     
     def _id(self):
         result = ''
@@ -102,7 +110,9 @@ class Lexer:
             'ass': TokenType.ASS,
             'or': TokenType.OP_ADD,
             'and': TokenType.OP_MUL,
-            'not': TokenType.OP_UN
+            'not': TokenType.OP_UN,
+            'true': TokenType.BOOLEAN,
+            'false': TokenType.BOOLEAN
         }
         
         return Token(keywords.get(result.lower(), TokenType.ID), result)
@@ -122,7 +132,7 @@ class Lexer:
                 return self._id()
             
             if self.current_char.isdigit():
-                return Token(TokenType.LITERAL, self.integer())
+                return self.number()
             
             if self.current_char == ';':
                 self.advance()
@@ -185,28 +195,33 @@ class Lexer:
         
         return Token(TokenType.EOF, None)
 
-# Таблица символов (идентификаторов)
-class SymbolTable:
-    def __init__(self):
-        self.symbols = {}
-    
-    def define(self, name, attributes):
-        """Добавляет переменную в таблицу символов"""
-        self.symbols[name] = attributes
-    
-    def lookup(self, name):
-        """Поиск переменной в таблице символов"""
-        return self.symbols.get(name)
+class Symbol:
+    def __init__(self, name, type_, value=None):
+        self.name = name
+        self.type = type_  # %, ! или $
+        self.value = value
     
     def __repr__(self):
-        return str(self.symbols)
+        return f"Symbol(name={self.name}, type={self.type}, value={self.value})"
+
+class SymbolTable:
+    def __init__(self):
+        self.symbols = {}  # Просто словарь для хранения Symbol объектов
+    
+    def define(self, symbol):
+        if symbol.name in self.symbols:
+            raise NameError(f"Переменная {symbol.name} уже объявлена")
+        self.symbols[symbol.name] = symbol
+    
+    def lookup(self, name):
+        return self.symbols.get(name)
 
 # Абстрактное синтаксическое дерево
 class AST:
     pass
 
 class Program(AST):
-    def __init__(self, declarations, compound_statement):
+    def __init__(self, declarations , compound_statement):
         self.declarations = declarations
         self.compound_statement = compound_statement
 
@@ -230,6 +245,12 @@ class Assign(AST):
         self.op = op
         self.right = right
 
+class If(AST):
+    def __init__(self, condition, true_branch, false_branch):
+        self.condition = condition
+        self.true_branch = true_branch
+        self.false_branch = false_branch
+
 class Var(AST):
     def __init__(self, token):
         self.token = token
@@ -238,7 +259,13 @@ class Var(AST):
 class Literal(AST):
     def __init__(self, token):
         self.token = token
-        self.value = token.value
+        if token.type == TokenType.BOOLEAN:
+            if token.value == 'true':
+                self.value = True
+            else:
+                self.value = False
+        else:
+            self.value = token.value
 
 class BinOp(AST):
     def __init__(self, left, op, right):
@@ -342,6 +369,19 @@ class Parser:
             return self.write_statement()
         else:
             return self.empty()
+
+    def if_statement(self):
+        self.eat(TokenType.IF)
+        condition = self.expr()
+        self.eat(TokenType.THEN)
+        true_branch = self.statement()
+        
+        false_branch = None
+        if self.current_token.type == TokenType.ELSE:
+            self.eat(TokenType.ELSE)
+            false_branch = self.statement()
+        
+        return If(condition, true_branch, false_branch)
 
     def assignment_statement(self):
         """assignment_statement : variable ASS expr"""
@@ -467,29 +507,22 @@ class Interpreter:
         self.visit(node.compound_statement)
     
     def visit_VarDecl(self, node):
-        """Обработка объявления переменной: сохраняем в таблицу символов"""
         var_name = node.var_node.value
         var_type = node.type_node.value
         
-        # Проверяем, не объявлена ли переменная ранее
         if self.symtab.lookup(var_name) is not None:
             raise NameError(f"Переменная '{var_name}' уже объявлена")
         
-        # Инициализируем значение по умолчанию в зависимости от типа
-        if var_type == '%':  # целочисленный тип
+        if var_type == '%':
             default_value = 0
-        elif var_type == '!':  # вещественный тип
+        elif var_type == '!':
             default_value = 0.0
-        elif var_type == '$':  # строковый тип
-            default_value = ""
+        elif var_type == '$':
+            default_value = False
         else:
             raise TypeError(f"Неизвестный тип '{var_type}'")
         
-        # Добавляем переменную в таблицу символов
-        self.symtab.define(var_name, {
-            'type': var_type,
-            'value': default_value
-        })
+        self.symtab.define(Symbol(var_name, var_type, default_value))
     
     def visit_Type(self, node):
         pass
@@ -501,14 +534,17 @@ class Interpreter:
     def visit_Assign(self, node):
         var_name = node.left.value
         value = self.visit(node.right)
-        self.symtab.symbols[var_name]['value'] = value
-    
+        symbol = self.symtab.lookup(var_name)
+        if symbol is None:
+            raise NameError(f"Переменная '{var_name}' не объявлена")
+        symbol.value = value  # Просто присваиваем значение напрямую
+
     def visit_Var(self, node):
         var_name = node.value
-        var = self.symtab.lookup(var_name)
-        if var is None:
-            raise Exception(f"Идентификатор не найден: {var_name}")
-        return var['value']
+        symbol = self.symtab.lookup(var_name)
+        if symbol is None:
+            raise NameError(f"Идентификатор не найден: {var_name}")
+        return symbol.value
     
     def visit_Literal(self, node):
         return node.value
@@ -521,7 +557,50 @@ class Interpreter:
         print(' '.join(results))
 
     def visit_BinOp(self, node):
-        return self.visit(node.left) *  self.visit(node.right)
+        """Обработка бинарных операций"""
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        
+        # Проверка типов (можно вынести в отдельный метод)
+        if isinstance(left, bool) or isinstance(right, bool):
+            if node.op.type != TokenType.OP_MUL or node.op.value != 'and':
+                if node.op.type != TokenType.OP_ADD or node.op.value != 'or':
+                    raise TypeError("Логические операции поддерживают только 'and' и 'or'")
+        
+        # Операции группы умножения (*, /, and)
+        if node.op.type == TokenType.OP_MUL:
+            if node.op.value == '*':
+                return left * right
+            elif node.op.value == '/':
+                if right == 0:
+                    raise ZeroDivisionError("Деление на ноль")
+                return left / right
+            elif node.op.value == 'and':
+                return left and right
+        
+        # Операции группы сложения (+, -, or)
+        elif node.op.type == TokenType.OP_ADD:
+            if node.op.value == '+':
+                return left + right
+            elif node.op.value == '-':
+                return left - right
+            elif node.op.value == 'or':
+                return left or right
+        
+        # Операции группы отношения (<, >, =, <=, >=)
+        elif node.op.type == TokenType.OP_REL:
+            if node.op.value == '<':
+                return left < right
+            elif node.op.value == '<=':
+                return left <= right
+            elif node.op.value == '>':
+                return left > right
+            elif node.op.value == '>=':
+                return left >= right
+            elif node.op.value == '=':
+                return left == right
+        
+        raise ValueError(f"Неизвестный бинарный оператор: {node.op.value}")
 
     def visit_NoOp(self, node):
         pass
