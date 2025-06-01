@@ -186,10 +186,10 @@ class Grammar:
 
     def remove_epsilon_rules(self):
         print("\n2.3 Устранение ε-правил (алгоритм 4.4):")
-        # Список нетерминалов, для которых ε-альтернатива должна сохраняться
         preserve_nullable = {
-            "оператор_список", "сумма_хвост", "произведение_хвост", "описание_хвост",
-            "ввода_хвост", "вывода_хвост", "текст_комментария", "ид_хвост"
+            "оператор_список", "сумма_хвост", "произведение_хвост", 
+            "описание_хвост", "ввода_хвост", "вывода_хвост", 
+            "текст_комментария", "ид_хвост", "комментарий"
         }
 
         nullable = set()
@@ -210,10 +210,10 @@ class Grammar:
             new_bodies = set()
             for body in bodies:
                 if not body:
-                    # сохраняем ε-правило, если оно разрешено
                     if head in preserve_nullable:
                         new_bodies.add(tuple())
                     continue
+                
                 nullable_indices = [i for i, sym in enumerate(body) if sym in nullable]
                 for mask in range(1 << len(nullable_indices)):
                     new_body = []
@@ -221,13 +221,10 @@ class Grammar:
                     for i, sym in enumerate(body):
                         if i not in nullable_indices or include[nullable_indices.index(i)]:
                             new_body.append(sym)
-                    new_bodies.add(tuple(new_body))
-            new_productions[head] = [list(b) for b in new_bodies]
-
-        # Восстанавливаем ε-правила, если они должны быть, но были удалены
-        for nt in preserve_nullable:
-           if nt in self.productions and [] in self.productions[nt]:
-                new_productions.setdefault(nt, []).append([])
+                    if new_body or head in preserve_nullable:
+                        new_bodies.add(tuple(new_body))
+            
+            new_productions[head] = [list(b) for b in new_bodies if b or head in preserve_nullable]
 
         self.productions = new_productions
 
@@ -303,102 +300,95 @@ class Grammar:
         self.non_terminals = set(new_productions.keys())
         self.terminals = self._collect_terminals()
 
-    def eliminate_left_factoring(self):
-        """
-        Алгоритм 4.6: Устранение левой факторизации правил.
-        
-        Для каждого нетерминала находим группы правил с общими префиксами
-        и факторизуем их, создавая новые нетерминалы.
-        """
-        print("\n2.5 Устранение левой факторизации (алгоритм 4.6):")
-        # Сохраняем количество продукций до обработки
-        productions_count_before = sum(len(prods) for prods in self.productions.values())
-        nonterminals_count_before = len(self.non_terminals)
-        
-        import copy
-        new_productions = copy.deepcopy(self.productions)
-        changed = True
+
         new_nt_index = 0
         
-        def longest_common_prefix(productions):
-            if not productions:
-                return []
-            prefix = productions[0]
-            for prod in productions[1:]:
-                i = 0
-                while i < min(len(prefix), len(prod)) and prefix[i] == prod[i]:
-                    i += 1
-                prefix = prefix[:i]
-                if prefix == []:
-                    break
-            return prefix
-        
-        while changed:
-            changed = False
-            for A in list(new_productions.keys()):
-                prods = new_productions[A]
-                if len(prods) < 2:
-                    continue
-                
-                prefix_groups = {}
-                for prod in prods:
-                    key = prod[0] if prod else None
-                    prefix_groups.setdefault(key, []).append(prod)
-                
-                for key, group in prefix_groups.items():
-                    if len(group) < 2:
-                        continue
-                    prefix = longest_common_prefix(group)
-                    if len(prefix) > 0:
-                        new_nt = f"{A}_fact{new_nt_index}"
-                        new_nt_index += 1
-                        changed = True
-                        
-                        new_rhs = []
-                        for prod in prods:
-                            if prod in group:
-                                continue
-                            new_rhs.append(prod)
-                        new_rhs.append(prefix + [new_nt])
-                        
-                        fact_prods = []
-                        plen = len(prefix)
-                        for prod in group:
-                            tail = prod[plen:]
-                            if tail == []:
-                                tail = [[]]
-                            fact_prods.append(tail)
-                        
-                        fact_prods_expanded = []
-                        for fprod in fact_prods:
-                            if fprod == [[]]:
-                                fact_prods_expanded.append([])
-                            else:
-                                fact_prods_expanded.append(fprod)
-                        
-                        new_productions[A] = new_rhs
-                        new_productions[new_nt] = fact_prods_expanded
+    def eliminate_left_factoring(self):
+            """
+            Алгоритм 4.6: Устранение левой факторизации правил.
+            """
+            print("\n2.5 Устранение левой факторизации (алгоритм 4.6):")
+            # Сбрасываем индекс для новых нетерминалов
+            new_nt_index = 0  # <-- Добавлено: сброс индекса
+            new_productions = copy.deepcopy(self.productions)  # <-- Используем глубокую копию
+            changed = True
+
+            def longest_common_prefix(productions):
+                if not productions:
+                    return []
+                prefix = productions[0]
+                for prod in productions[1:]:
+                    i = 0
+                    while i < min(len(prefix), len(prod)) and prefix[i] == prod[i]:
+                        i += 1
+                    prefix = prefix[:i]
+                    if prefix == []:
                         break
-                if changed:
-                    break
-        
-        # Вывод множества нетерминалов
-        print(f" Множество нетерминалов: {', '.join(sorted(new_productions.keys()))}")
-        
-        # Вывод новых правил без одинаковых префиксов
-        print(" Новые правила без одинаковых префиксов:")
-        for A in sorted(new_productions.keys()):
-            productions = new_productions[A]
-            print(f"  {A} -> ", end="")
-            for i, prod in enumerate(productions):
-                if i > 0:
-                    print(" | ", end="")
-                print(" ".join(prod) if prod else "ε", end="")
-            print()
-        
-        self.productions = new_productions
-        self.non_terminals = set(new_productions.keys())
-        self.terminals = self._collect_terminals()
+                return prefix
+
+            while changed:
+                changed = False
+                for A in list(new_productions.keys()):
+                    prods = new_productions[A]
+                    if len(prods) < 2:
+                        continue
+
+                    prefix_groups = {}
+                    for prod in prods:
+                        key = prod[0] if prod else None
+                        prefix_groups.setdefault(key, []).append(prod)
+
+                    for key, group in prefix_groups.items():
+                        if len(group) < 2:
+                            continue
+                        prefix = longest_common_prefix(group)
+                        if len(prefix) > 0:
+                            new_nt = f"{A}_fact{new_nt_index}"
+                            new_nt_index += 1
+                            changed = True
+
+                            new_rhs = []
+                            for prod in prods:
+                                if prod in group:
+                                    continue
+                                new_rhs.append(prod)
+                            new_rhs.append(prefix + [new_nt])
+
+                            fact_prods = []
+                            plen = len(prefix)
+                            for prod in group:
+                                tail = prod[plen:]
+                                if tail == []:
+                                    tail = [[]]
+                                fact_prods.append(tail)
+
+                            fact_prods_expanded = []
+                            for fprod in fact_prods:
+                                if fprod == [[]]:
+                                    fact_prods_expanded.append([])
+                                else:
+                                    fact_prods_expanded.append(fprod)
+
+                            new_productions[A] = new_rhs
+                            new_productions[new_nt] = fact_prods_expanded
+                            break
+
+            # Обновляем грамматику
+            self.productions = new_productions
+            self.non_terminals = set(new_productions.keys())
+            self.terminals = self._collect_terminals()
+
+            # Вывод результатов
+            print(f" Множество нетерминалов: {', '.join(sorted(new_productions.keys()))}")
+            print(" Новые правила без одинаковых префиксов:")
+            for A in sorted(new_productions.keys()):
+                productions = new_productions[A]
+                print(f"  {A} -> ", end="")
+                for i, prod in enumerate(productions):
+                    if i > 0:
+                        print(" | ", end="")
+                    print(" ".join(prod) if prod else "ε", end="")
+                print()
 
     def eliminate_immediate_left_recursion(self):
         """
@@ -636,58 +626,89 @@ class LL1Parser:
         self.build_parse_table()
 
     def compute_first_sets(self):
+        # Инициализация FIRST для терминалов
         for t in self.terminals:
-            self.first[t] = {t}
+            self.first[t].add(t)
+        
+        # Вычисление FIRST для нетерминалов
         changed = True
         while changed:
             changed = False
             for nt in self.nonterminals:
                 for prod in self.productions.get(nt, []):
+                    # Для каждой продукции A -> α
                     before = len(self.first[nt])
-                    for symbol in prod:
-                        self.first[nt] |= self.first[symbol] - {'ε'}
-                        if 'ε' not in self.first[symbol]:
-                            break
-                    else:
+                    
+                    # Если α = ε, добавляем ε в FIRST(A)
+                    if not prod:
                         self.first[nt].add('ε')
+                    else:
+                        # Добавляем FIRST(α) в FIRST(A)
+                        all_epsilon = True
+                        for symbol in prod:
+                            self.first[nt].update(self.first[symbol] - {'ε'})
+                            if 'ε' not in self.first[symbol]:
+                                all_epsilon = False
+                                break
+                        
+                        if all_epsilon:
+                            self.first[nt].add('ε')
+                    
                     if len(self.first[nt]) > before:
                         changed = True
 
     def compute_follow_sets(self):
         self.follow[self.start_symbol].add('$')
+        
         changed = True
         while changed:
             changed = False
-            for nt in self.nonterminals:
+            for nt in list(self.nonterminals):  # Используем list для фиксированного порядка
                 for prod in self.productions.get(nt, []):
-                    trailer = self.follow[nt].copy()
+                    trailer = set(self.follow[nt])
+                    
+                    # Обрабатываем продукцию в обратном порядке
                     for symbol in reversed(prod):
                         if symbol in self.nonterminals:
                             before = len(self.follow[symbol])
-                            self.follow[symbol] |= trailer
-                            if 'ε' in self.first[symbol]:
-                                trailer |= self.first[symbol] - {'ε'}
-                            else:
-                                trailer = self.first[symbol]
+                            self.follow[symbol].update(trailer)
                             if len(self.follow[symbol]) > before:
                                 changed = True
+                            
+                            if 'ε' in self.first[symbol]:
+                                trailer.update(self.first[symbol] - {'ε'})
+                            else:
+                                trailer = set(self.first[symbol])
                         else:
-                            trailer = self.first[symbol]
+                            trailer = set(self.first[symbol])
 
     def build_parse_table(self):
+        self.table = defaultdict(dict)
+        
         for nt in self.nonterminals:
             for prod in self.productions.get(nt, []):
-                first_set = self.first_of_sequence(prod)
-                for terminal in first_set - {'ε'}:
+                first_alpha = self.first_of_sequence(prod)
+                
+                # Для каждого терминала в FIRST(α)
+                for terminal in first_alpha - {'ε'}:
+                    if terminal in self.table[nt]:
+                        # Вместо вызова ошибки, выбираем последнее правило (можно изменить логику)
+                        print(f"Предупреждение: конфликт в таблице разбора для {nt} -> {terminal}")
+                        print(f"Существующее: {self.table[nt][terminal]}, новое: {prod}")
                     self.table[nt][terminal] = prod
-                if 'ε' in first_set:
+                
+                # Если ε в FIRST(α), добавляем для всех терминалов из FOLLOW(A)
+                if 'ε' in first_alpha:
                     for terminal in self.follow[nt]:
+                        if terminal in self.table[nt]:
+                            print(f"Предупреждение: конфликт в таблице разбора для {nt} -> {terminal}")
+                            print(f"Существующее: {self.table[nt][terminal]}, новое: {prod}")
                         self.table[nt][terminal] = prod
 
     def first_of_sequence(self, symbols: List[str]) -> Set[str]:
         result = set()
         for symbol in symbols:
-            result |= self.first[symbol] - {'ε'}
+            result.update(self.first[symbol] - {'ε'})
             if 'ε' not in self.first[symbol]:
                 return result
         result.add('ε')
@@ -702,11 +723,11 @@ class LL1Parser:
         while stack:
             top = stack.pop()
             current_token = tokens[cursor]
-            print(top, current_token)
+            
             if top == current_token:
                 cursor += 1
             elif top in self.terminals:
-                raise SyntaxError(f"Unexpected token: {current_token}, expected: {top}")
+                raise SyntaxError(f"Неожиданный токен: {current_token}, ожидался: {top}")
             elif current_token in self.table[top]:
                 prod = self.table[top][current_token]
                 output.append((top, prod))
@@ -714,12 +735,12 @@ class LL1Parser:
                     if sym != 'ε':
                         stack.append(sym)
             else:
-                raise SyntaxError(f"Unexpected token: {current_token} at {top}")
-
+                expected = list(self.table[top].keys())
+                raise SyntaxError(f"Неожиданный токен: {current_token} при разборе {top}. Ожидалось: {expected}")
+        
         if cursor != len(tokens):
-            raise SyntaxError("Input not fully consumed")
+            raise SyntaxError("Входные данные не полностью обработаны")
         return output
-
 
 # ---------- Пример грамматики и тест ----------
 if __name__ == '__main__':
@@ -754,7 +775,7 @@ if __name__ == '__main__':
         "оператор": [["присваивания"], ["условный"], ["цикла"], ["цикла_фиксированный"], ["составной"], ["ввода"], ["вывода"], ["комментарий"]],
         
         # Операторы
-        "присваивания": [["идентификатор", "ass", "выражение"]],
+        "присваивания": [["идентификатор", "ass", "сумма"]],
         "условный": [["if", "выражение", "then", "оператор", "else", "оператор"], ["if", "выражение", "then", "оператор"]],
         "цикла": [["while", "выражение", "do", "оператор"]],
         "цикла_фиксированный": [["for", "присваивания", "to", "выражение", "do", "оператор"]],
@@ -765,7 +786,7 @@ if __name__ == '__main__':
         "вывода_хвост": [[",", "выражение", "вывода_хвост"], []],
         
         # Выражения
-        "выражение": [["унарное"], ["сумма"], ["сумма", "знак_сравнения", "сумма"]],
+        "выражение": [["унарное"], ["сумма"], ["логическая_константа"]],
         "унарное": [["not", "множитель"]],
         "знак_сравнения": [["="], ["<"], [">"], ["<="], [">="]],
         
@@ -797,16 +818,19 @@ if __name__ == '__main__':
 
     grammar222 = Grammar(grammar)
     grammar222.print_grammar()
-    grammar222.check_language_existence()
-    grammar222.remove_epsilon_rules()
-    grammar222.print_grammar()
-    grammar222.eliminate_chain_rules()
-    grammar222.eliminate_unreachable()
+
+    # Новый порядок преобразований:
+    if not grammar222.check_language_existence():
+        raise ValueError("Язык грамматики пуст")
+
     grammar222.eliminate_non_generating()
+    grammar222.eliminate_unreachable()
+    grammar222.remove_epsilon_rules()
+    grammar222.eliminate_chain_rules()
     grammar222.eliminate_left_factoring()
     grammar222.eliminate_immediate_left_recursion()
-    grammar222.print_grammar()
 
+    grammar222.print_grammar()
 
 
 
