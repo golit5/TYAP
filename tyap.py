@@ -1,16 +1,9 @@
 # Полная связка: Lexer + LL(1) Parser с тестами
 from collections import defaultdict, deque
+import hashlib
 from typing import List, Dict, Tuple, Set
-import sys
-from enum import Enum, auto
 from copy import deepcopy
 from typing import List, Dict, Set
-from itertools import zip_longest
-from itertools import chain, combinations
-
-from copy import deepcopy
-from typing import Dict, List, Set
-from itertools import zip_longest
 
 class Grammar:
     def __init__(self, grammar: Dict):
@@ -498,7 +491,7 @@ class LexerFA:
         self.token_types = []
 
     def hash_id(self, ident):
-        return hash(ident) % 997
+        return int("0x" + hashlib.sha1(ident.encode()).hexdigest(), 16) % 997
 
     def add_identifier(self, ident):
         idx = self.hash_id(ident)
@@ -784,8 +777,8 @@ if __name__ == '__main__':
         "ид_хвост": [["буква", "ид_хвост"], ["цифра", "ид_хвост"], []],
         "число": [["число"]],
         "логическая_константа": [["true"], ["false"]],
-        "буква": [[c] for c in "abcdefghijklmnopqrstuvwxyz"],
-        "цифра": [[d] for d in "0123456789"],
+         "буква": [[c] for c in "abcdefghijklmnopqrstuvwxyz"],
+         "цифра": [[d] for d in "0123456789"],
         
         # Комментарии
         "комментарий": [["{", "текст_комментария", "}"]],
@@ -798,10 +791,9 @@ if __name__ == '__main__':
     grammar222.print_grammar()
     grammar222.check_language_existence()
     grammar222.remove_epsilon_rules()
-    grammar222.print_grammar()
-    grammar222.eliminate_chain_rules()
     grammar222.eliminate_unreachable()
     grammar222.eliminate_non_generating()
+    grammar222.eliminate_chain_rules()
     grammar222.eliminate_left_factoring()
     grammar222.eliminate_immediate_left_recursion()
     grammar222.print_grammar()
