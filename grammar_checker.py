@@ -3,7 +3,7 @@ from LA import TypeTokens, relationship_ops, addition_ops, multiplication_ops, u
 from itertools import chain, combinations
 
 class Grammar:
-    def __init__(self):
+    def __init__(self, grammar):
         self.productions = {
             # Программа и операторы
             "программа": [ ["{", "последовательность_описаний_и_операторов", "}"] ],

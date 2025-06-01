@@ -1,5 +1,728 @@
 import sys
 from enum import Enum, auto
+from copy import deepcopy
+from typing import List, Dict, Set
+from itertools import zip_longest
+from itertools import chain, combinations
+
+from copy import deepcopy
+from typing import Dict, List, Set
+from itertools import zip_longest
+
+class Grammar:
+    def __init__(self, grammar: Dict):
+        self.non_terminals = set(grammar['nonterminals'])
+        self.terminals = set(grammar['terminals'])
+        self.start_symbol = grammar['start_symbol']
+        self.productions = deepcopy(grammar['productions'])
+        
+    def _collect_terminals(self):
+        """Собирает все терминальные символы из правил"""
+        terminals = set()
+        for rhs_list in self.productions.values():
+            for rhs in rhs_list:
+                for symbol in rhs:
+                    if symbol not in self.non_terminals and symbol:
+                        terminals.add(symbol)
+        return terminals
+    
+    def check_language_existence(self):
+        """
+        Алгоритм 4.1: Проверка существования языка грамматики
+        Возвращает True если язык существует (стартовый символ порождает терминальную строку)
+        """
+        print("\n2.0 Проверка существования языка грамматики (алгоритм 4.1):")
+        N_prev = set()
+        changed = True
+        
+        while changed:
+            N_current = N_prev.copy()
+            for A in self.non_terminals:
+                for production in self.productions[A]:
+                    # Проверяем все символы в продукции
+                    all_valid = True
+                    for symbol in production:
+                        if symbol in self.non_terminals and symbol not in N_prev:
+                            all_valid = False
+                            break
+                    
+                    if all_valid:
+                        N_current.add(A)
+            
+            changed = N_current != N_prev
+            N_prev = N_current
+        
+        return self.start_symbol in N_prev
+    
+    #
+
+    def eliminate_non_generating(self):
+        """
+        Алгоритм 4.2: Устранение нетерминалов, не порождающих терминальных строк
+        
+        После выполнения, self.productions и self.non_terminals будут очищены от бесполезных нетерминалов,
+        которые не порождают терминальные строки.
+        """
+        print("\n2.1 Устранение нетерминалов, не порождающих терминальные строки (алгоритм 4.2):")
+        non_generating_before = set(self.non_terminals) #Исходные нетерминалы
+        
+        generating = set() #Множество порождающих терминалов
+        changed = True
+        
+        while changed:
+            changed = False
+            for A in self.non_terminals:
+                if A not in generating:
+                    for production in self.productions[A]:
+                        if all((sym not in self.non_terminals) or (sym in generating) for sym in production):
+                            generating.add(A)
+                            changed = True
+                            break
+        
+        new_productions = {}
+        for A in generating:
+            new_rhs = []
+            for production in self.productions[A]:
+                if all((sym not in self.non_terminals) or (sym in generating) for sym in production):
+                    new_rhs.append(production)
+            new_productions[A] = new_rhs
+        
+        non_generating_after = set(new_productions.keys())
+        non_generating_removed = non_generating_before - non_generating_after
+        
+        # Вывод множества порождающих нетерминалов
+        print(f" Множество порождающих нетерминалов: {', '.join(sorted(generating))}")
+        
+        # Вывод информации об устраненных нетерминалах
+        if non_generating_removed:
+            print(f" Устранены нетерминалы, не порождающие терминальные строки: {', '.join(sorted(non_generating_removed))}")
+        else:
+            print(" Нетерминалы, не порождающие терминальные строки, отсутствуют")
+        
+        # Вывод новых правил
+        print(" Новые правила:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        self.productions = new_productions
+        self.non_terminals = generating
+        self.terminals = self._collect_terminals()
+
+    def eliminate_unreachable(self):
+        """
+        Алгоритм 4.3: Устранение недостижимых символов
+        
+        Удаляет из грамматики символы (и правила), которые не достижимы из стартового символа.
+        """
+        print("\n2.2 Устранение недостижимых символов (алгоритм 4.3):")
+        unreachable_before = set(self.non_terminals)
+        
+        reachable = set([self.start_symbol])
+        changed = True
+        
+        while changed:
+            changed = False
+            for A in list(reachable):
+                for production in self.productions.get(A, []):
+                    for sym in production:
+                        if sym in self.non_terminals and sym not in reachable:
+                            reachable.add(sym)
+                            changed = True
+        
+        # Удаляем недостижимые нетерминалы и правила
+        new_productions = {}
+        for A in reachable:
+            new_rhs = []
+            for production in self.productions[A]:
+                if all((sym not in self.non_terminals) or (sym in reachable) for sym in production):
+                    new_rhs.append(production)
+            if new_rhs:
+                new_productions[A] = new_rhs
+        
+        unreachable_after = set(new_productions.keys())
+        unreachable_removed = unreachable_before - unreachable_after
+        
+        # Вывод множества достижимых нетерминалов
+        print(f" Множество достижимых нетерминалов: {', '.join(sorted(reachable))}")
+        
+        # Вывод информации об устраненных нетерминалах
+        if unreachable_removed:
+            print(f" Устранены недостижимые символы: {', '.join(sorted(unreachable_removed))}")
+        else:
+            print(" Недостижимые символы отсутствуют")
+        
+        # Вывод новых правил
+        print(" Новые правила:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        self.productions = new_productions
+        self.non_terminals = set(new_productions.keys())
+        self.terminals = self._collect_terminals()
+
+    def remove_epsilon_rules(self):
+        print("\n2.3 Устранение ε-правил (алгоритм 4.4):")
+        nullable = set()
+        changed = True
+        while changed:
+            changed = False
+            for head, bodies in self.productions.items():
+                for body in bodies:
+                    if not body or all(sym in nullable for sym in body):
+                        if head not in nullable:
+                            nullable.add(head)
+                            changed = True
+
+        print(f" Множество ε-порождающих нетерминалов: {', '.join(sorted(nullable))}")
+
+        new_productions = {}
+        for head, bodies in self.productions.items():
+            new_bodies = set()
+            for body in bodies:
+                if not body:  # Skip epsilon rules
+                    continue
+                nullable_indices = [i for i, sym in enumerate(body) if sym in nullable]
+                for mask in range(1 << len(nullable_indices)):
+                    new_body = []
+                    include = [bool((mask >> i) & 1) for i in range(len(nullable_indices))]
+                    for i, sym in enumerate(body):
+                        if i not in nullable_indices or include[nullable_indices.index(i)]:
+                            new_body.append(sym)
+                    if new_body:
+                        new_bodies.add(tuple(new_body))
+            new_productions[head] = [list(b) for b in new_bodies]
+        self.productions = new_productions
+
+        print(" Новые правила:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        # Вывод стартового символа
+        print(f" Стартовый символ: {self.start_symbol}")
+
+    def eliminate_epsilon_rules(self):
+        """
+        Алгоритм 4.4: Устранение ε-правил
+        
+        Исключает ε-правила из грамматики, кроме допуска для стартового символа.
+        """
+        print("\n2.3 Устранение ε-правил (алгоритм 4.4):")
+        # Подсчет ε-правил до устранения
+        epsilon_rules_count_before = sum(1 for prods in self.productions.values() for prod in prods if prod == [])
+        
+        # Шаг 1. Найти множество ε-порождающих нетерминалов N
+        N_prev = set(A for A, prods in self.productions.items() if [] in prods)
+        changed = True
+        
+        while changed:
+            changed = False
+            for A in self.non_terminals:
+                if A not in N_prev:
+                    for production in self.productions[A]:
+                        if all((sym in N_prev) or (sym not in self.non_terminals) for sym in production) and production:
+                            N_prev.add(A)
+                            changed = True
+                            break
+        
+        nullable = N_prev
+        
+        # Вывод множества ε-порождающих нетерминалов
+        print(f" Множество ε-порождающих нетерминалов: {', '.join(sorted(nullable))}")
+        
+        # Шаг 2. Переносим все правила кроме ε-правил
+        new_productions = {}
+        for A in self.non_terminals:
+            new_rhs = [prod for prod in self.productions[A] if prod != []]
+            new_productions[A] = new_rhs
+        
+        # Шаг 3. Добавляем новые правила, исключая всевозможные комбинации nullable символов
+        def powerset(iterable):
+            s = list(iterable)
+            return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
+        
+        for A in list(new_productions.keys()):
+            new_rules = set()
+            for production in new_productions[A]:
+                indices_nullable = [i for i, sym in enumerate(production) if sym in nullable]
+                for to_remove in powerset(indices_nullable):
+                    if to_remove == ():
+                        continue
+                    new_prod = [sym for i, sym in enumerate(production) if i not in to_remove]
+                    if new_prod:
+                        new_rules.add(tuple(new_prod))
+            
+            for rule in new_rules:
+                if list(rule) not in new_productions[A]:
+                    new_productions[A].append(list(rule))
+        
+        # Шаг 4. Обрабатываем стартовый символ
+        S = self.start_symbol
+        if S in nullable:
+            if [] not in new_productions[S]:
+                new_productions[S].append([])
+        
+        # Вывод новых правил
+        print(" Новые правила:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        # Вывод стартового символа
+        print(f" Стартовый символ: {self.start_symbol}")
+        
+        self.productions = new_productions
+        self.non_terminals = set(new_productions.keys())
+        self.terminals = self._collect_terminals()
+
+    def eliminate_chain_rules(self):
+        """
+        Алгоритм 4.5: Устранение цепных правил
+        
+        Цепное правило: A -> B, где A и B - нетерминалы
+        """
+        print("\n2.4 Устранение цепных правил (алгоритм 4.5):")
+        # Подсчет цепных правил до устранения
+        chain_rules_count_before = sum(1 for nt, prods in self.productions.items() 
+                                     for prod in prods 
+                                     if len(prod) == 1 and prod[0] in self.non_terminals)
+        
+        # Шаг 1: для каждого A вычислить множество N_A
+        N_sets = {}
+        for A in self.non_terminals:
+            N_current = set([A])
+            changed = True
+            while changed:
+                changed = False
+                to_add = set()
+                for B in N_current:
+                    for production in self.productions.get(B, []):
+                        if len(production) == 1 and production[0] in self.non_terminals:
+                            C = production[0]
+                            if C not in N_current:
+                                to_add.add(C)
+                if to_add:
+                    N_current |= to_add
+                    changed = True
+            N_sets[A] = N_current
+        
+        # Шаг 2: формируем новые правила
+        new_productions = {}
+        for A in self.non_terminals:
+            new_rhs = []
+            for B in N_sets[A]:
+                for production in self.productions.get(B, []):
+                    if not (len(production) == 1 and production[0] in self.non_terminals):
+                        if production not in new_rhs:
+                            new_rhs.append(production)
+            new_productions[A] = new_rhs
+        
+        # Вывод множества нетерминалов без цепных правил
+        print(f" Множество нетерминалов без цепных правил: {', '.join(sorted(new_productions.keys()))}")
+        
+        # Вывод новых правил
+        print(" Новые правила:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        self.productions = new_productions
+        self.non_terminals = set(new_productions.keys())
+        self.terminals = self._collect_terminals()
+
+    def eliminate_left_factoring(self):
+        """
+        Алгоритм 4.6: Устранение левой факторизации правил.
+        
+        Для каждого нетерминала находим группы правил с общими префиксами
+        и факторизуем их, создавая новые нетерминалы.
+        """
+        print("\n2.5 Устранение левой факторизации (алгоритм 4.6):")
+        # Сохраняем количество продукций до обработки
+        productions_count_before = sum(len(prods) for prods in self.productions.values())
+        nonterminals_count_before = len(self.non_terminals)
+        
+        import copy
+        new_productions = copy.deepcopy(self.productions)
+        changed = True
+        new_nt_index = 0
+        
+        def longest_common_prefix(productions):
+            if not productions:
+                return []
+            prefix = productions[0]
+            for prod in productions[1:]:
+                i = 0
+                while i < min(len(prefix), len(prod)) and prefix[i] == prod[i]:
+                    i += 1
+                prefix = prefix[:i]
+                if prefix == []:
+                    break
+            return prefix
+        
+        while changed:
+            changed = False
+            for A in list(new_productions.keys()):
+                prods = new_productions[A]
+                if len(prods) < 2:
+                    continue
+                
+                prefix_groups = {}
+                for prod in prods:
+                    key = prod[0] if prod else None
+                    prefix_groups.setdefault(key, []).append(prod)
+                
+                for key, group in prefix_groups.items():
+                    if len(group) < 2:
+                        continue
+                    prefix = longest_common_prefix(group)
+                    if len(prefix) > 0:
+                        new_nt = f"{A}_fact{new_nt_index}"
+                        new_nt_index += 1
+                        changed = True
+                        
+                        new_rhs = []
+                        for prod in prods:
+                            if prod in group:
+                                continue
+                            new_rhs.append(prod)
+                        new_rhs.append(prefix + [new_nt])
+                        
+                        fact_prods = []
+                        plen = len(prefix)
+                        for prod in group:
+                            tail = prod[plen:]
+                            if tail == []:
+                                tail = [[]]
+                            fact_prods.append(tail)
+                        
+                        fact_prods_expanded = []
+                        for fprod in fact_prods:
+                            if fprod == [[]]:
+                                fact_prods_expanded.append([])
+                            else:
+                                fact_prods_expanded.append(fprod)
+                        
+                        new_productions[A] = new_rhs
+                        new_productions[new_nt] = fact_prods_expanded
+                        break
+                if changed:
+                    break
+        
+        # Вывод множества нетерминалов
+        print(f" Множество нетерминалов: {', '.join(sorted(new_productions.keys()))}")
+        
+        # Вывод новых правил без одинаковых префиксов
+        print(" Новые правила без одинаковых префиксов:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        self.productions = new_productions
+        self.non_terminals = set(new_productions.keys())
+        self.terminals = self._collect_terminals()
+
+    def eliminate_immediate_left_recursion(self):
+        """
+        Устранение прямой левой рекурсии (алгоритм 4.7).
+        Для каждого нетерминала X ищем правила вида X -> X alpha (левая рекурсия)
+        и правила X -> beta (без левой рекурсии).
+        Создаем новый нетерминал X' и преобразуем правила:
+        
+        X  -> beta X'
+        X' -> alpha X' | ε
+        """
+        print("\n2.6 Устранение левой рекурсии (алгоритм 4.7):")
+        # Сохраняем количество продукций и нетерминалов до обработки
+        productions_count_before = sum(len(prods) for prods in self.productions.values())
+        nonterminals_count_before = len(self.non_terminals)
+        
+        import copy
+        new_productions = {}
+        new_nt_index = 0
+        
+        for A in self.productions:
+            prods = self.productions[A]
+            
+            recursive = []
+            non_recursive = []
+            
+            for prod in prods:
+                if len(prod) > 0 and prod[0] == A:
+                    recursive.append(prod[1:])
+                else:
+                    non_recursive.append(prod)
+            
+            if recursive:
+                new_nt = f"{A}_rec{new_nt_index}"
+                new_nt_index += 1
+                
+                new_productions[A] = [beta + [new_nt] for beta in non_recursive]
+                new_productions[new_nt] = [alpha + [new_nt] for alpha in recursive]
+                new_productions[new_nt].append([])
+                
+            else:
+                new_productions[A] = prods
+        
+        # Вывод множества нетерминалов
+        print(f" Множество нетерминалов: {', '.join(sorted(new_productions.keys()))}")
+        
+        # Вывод новых правил без прямой левой рекурсии
+        print(" Новые правила без прямой левой рекурсии:")
+        for A in sorted(new_productions.keys()):
+            productions = new_productions[A]
+            print(f"  {A} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+        
+        self.productions = new_productions
+        self.non_terminals = set(new_productions.keys())
+        self.terminals = self._collect_terminals()
+
+    def print_grammar(self):
+        """Выводит текущие правила грамматики в читаемом формате"""
+        print("\nТекущая грамматика:")
+        for non_terminal in sorted(self.productions.keys()):
+            productions = self.productions[non_terminal]
+            print(f"{non_terminal} -> ", end="")
+            for i, prod in enumerate(productions):
+                if i > 0:
+                    print(" | ", end="")
+                print(" ".join(prod) if prod else "ε", end="")
+            print()
+            
+        print(f"\nСтартовый символ: {self.start_symbol}")
+        print(f"Количество нетерминалов: {len(self.non_terminals)}")
+        print(f"Количество терминалов: {len(self.terminals)}")
+
+class CFGNormalizer:
+    def __init__(self, grammar: Dict):
+        self.nonterminals = set(grammar['nonterminals'])
+        self.terminals = set(grammar['terminals'])
+        self.start_symbol = grammar['start_symbol']
+        self.productions = deepcopy(grammar['productions'])
+
+    def normalize(self) -> Dict:
+        if not self.language_exists():
+            raise ValueError("The language of the grammar is empty.")
+
+        self.remove_useless_symbols()
+        self.remove_unreachable_symbols()
+        self.remove_epsilon_rules()
+        self.remove_chain_rules()
+        self.left_factor()
+        self.remove_direct_left_recursion()
+
+        return {
+            "nonterminals": self.nonterminals,
+            "terminals": self.terminals,
+            "productions": self.productions,
+            "start_symbol": self.start_symbol
+        }
+
+    def language_exists(self) -> bool:
+        generating = set()
+        changed = True
+        while changed:
+            changed = False
+            for head, bodies in self.productions.items():
+                for body in bodies:
+                    if all(sym in generating or sym in self.terminals for sym in body):
+                        if head not in generating:
+                            generating.add(head)
+                            changed = True
+        return self.start_symbol in generating
+
+    def remove_useless_symbols(self):
+        generating = set()
+        changed = True
+        while changed:
+            changed = False
+            for head, bodies in self.productions.items():
+                for body in bodies:
+                    if all(sym in generating or sym in self.terminals for sym in body):
+                        if head not in generating:
+                            generating.add(head)
+                            changed = True
+
+        self.productions = {h: [b for b in bs if all(sym in generating or sym in self.terminals for sym in b)]
+                          for h, bs in self.productions.items() if h in generating}
+        self.nonterminals &= generating
+
+    def remove_unreachable_symbols(self):
+        reachable = {self.start_symbol}
+        changed = True
+        while changed:
+            changed = False
+            for head in list(reachable):
+                for body in self.productions.get(head, []):
+                    for sym in body:
+                        if sym in self.nonterminals and sym not in reachable:
+                            reachable.add(sym)
+                            changed = True
+        self.productions = {h: [b for b in bs if all(sym in self.terminals or sym in reachable for sym in b)]
+                          for h, bs in self.productions.items() if h in reachable}
+        self.nonterminals &= reachable
+
+    def remove_epsilon_rules(self):
+        nullable = set()
+        changed = True
+        while changed:
+            changed = False
+            for head, bodies in self.productions.items():
+                for body in bodies:
+                    if not body or all(sym in nullable for sym in body):
+                        if head not in nullable:
+                            nullable.add(head)
+                            changed = True
+
+        new_productions = {}
+        for head, bodies in self.productions.items():
+            new_bodies = set()
+            for body in bodies:
+                if not body:  # Skip epsilon rules
+                    continue
+                nullable_indices = [i for i, sym in enumerate(body) if sym in nullable]
+                for mask in range(1 << len(nullable_indices)):
+                    new_body = []
+                    include = [bool((mask >> i) & 1) for i in range(len(nullable_indices))]
+                    for i, sym in enumerate(body):
+                        if i not in nullable_indices or include[nullable_indices.index(i)]:
+                            new_body.append(sym)
+                    if new_body:
+                        new_bodies.add(tuple(new_body))
+            new_productions[head] = [list(b) for b in new_bodies]
+        self.productions = new_productions
+
+    def remove_chain_rules(self):
+        chains = {nt: {nt} for nt in self.nonterminals}
+        changed = True
+        while changed:
+            changed = False
+            for nt in self.nonterminals:
+                for body in self.productions.get(nt, []):
+                    if len(body) == 1 and body[0] in self.nonterminals:
+                        if body[0] not in chains[nt]:
+                            chains[nt].add(body[0])
+                            changed = True
+
+        new_productions = {}
+        for nt in self.nonterminals:
+            new_bodies = []
+            for target in chains[nt]:
+                for body in self.productions.get(target, []):
+                    if not (len(body) == 1 and body[0] in self.nonterminals):
+                        if body not in new_bodies:
+                            new_bodies.append(body)
+            new_productions[nt] = new_bodies
+        self.productions = new_productions
+
+    def left_factor(self):
+        def longest_common_prefix(sequences):
+            result = []
+            for parts in zip_longest(*sequences):
+                if all(p == parts[0] for p in parts if p is not None):
+                    result.append(parts[0])
+                else:
+                    break
+            return result
+
+        updated = True
+        counter = 1
+        while updated:
+            updated = False
+            new_productions = {}
+            for head, bodies in self.productions.items():
+                if len(bodies) < 2:
+                    new_productions[head] = bodies
+                    continue
+                
+                prefix = longest_common_prefix(bodies)
+                if prefix:
+                    updated = True
+                    common_len = len(prefix)
+                    suffixes = []
+                    for body in bodies:
+                        if body[:common_len] == prefix:
+                            suffixes.append(body[common_len:] if body[common_len:] else [])
+                    
+                    new_nt = f"{head}_fact{counter}"
+                    while new_nt in self.nonterminals:
+                        counter += 1
+                        new_nt = f"{head}_fact{counter}"
+                    
+                    self.nonterminals.add(new_nt)
+                    new_productions[head] = [prefix + [new_nt]]
+                    new_productions[new_nt] = suffixes
+                    counter += 1
+                else:
+                    new_productions[head] = bodies
+            self.productions = new_productions
+
+    def remove_direct_left_recursion(self):
+        new_productions = {}
+        new_nonterminals = set(self.nonterminals)
+        
+        for A in list(self.nonterminals):
+            alpha = []
+            beta = []
+            for body in self.productions.get(A, []):
+                if body and body[0] == A:
+                    alpha.append(body[1:])
+                else:
+                    beta.append(body)
+            
+            if alpha:
+                A_prime = A + "'"
+                while A_prime in new_nonterminals:
+                    A_prime += "'"
+                
+                new_nonterminals.add(A_prime)
+                new_productions[A] = [b + [A_prime] for b in beta] if beta else [[A_prime]]
+                new_productions[A_prime] = [a + [A_prime] for a in alpha] + [[]]
+            else:
+                new_productions[A] = self.productions.get(A, [])
+        
+        self.productions = new_productions
+        self.nonterminals = new_nonterminals
+
+
+
 
 # Типы токенов
 class TokenType(Enum):
@@ -739,178 +1462,271 @@ class Interpreter:
     
 
 def main():
+    grammar1 = {
+    "nonterminals": {
+        "программа", "описание", "тело", "оператор", "присваивания", "условный",
+        "цикла", "цикла_фиксированный", "составной", "ввода", "вывода", "выражение", 
+        "сумма", "произведение", "множитель", "унарное", "идентификатор", "число", 
+        "логическая_константа", "описание_хвост", "оператор_список", "тип",
+        "знак_сравнения", "сумма_хвост", "произведение_хвост", "ид_хвост",
+        "ввода_хвост", "вывода_хвост", "буква", "цифра", "комментарий"
+    },
+    "terminals": {
+        "program", "var", "begin", "end", "int", "bool", "read", "write", "if", "then",
+        "else", "while", "do", "for", "to", "true", "false", "not", ":=", "=", "<", ">", 
+        "<=", ">=", "+", "-", "*", "/", "or", "and", "(", ")", ",", ":", ";", ".", "a", 
+        "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", 
+        "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", 
+        "7", "8", "9", "{", "}"
+    },
+    "start_symbol": "программа",
+    "productions": {
+        # Основные конструкции
+        "программа": [["program", "описание", ";", "тело", "."], ["комментарий", "program", "описание", ";", "тело", "."]],
+        "описание": [["var", "идентификатор", "описание_хвост", ":", "тип"]],
+        "описание_хвост": [["идентификатор", "описание_хвост"], []],
+        "тип": [["int"], ["bool"]],
+        
+        # Тело и операторы
+        "тело": [["begin", "оператор_список", "end"], ["комментарий", "begin", "оператор_список", "end"]],
+        "оператор_список": [["оператор", ";", "оператор_список"], ["оператор"]],
+        "оператор": [["присваивания"], ["условный"], ["цикла"], ["цикла_фиксированный"], ["составной"], ["ввода"], ["вывода"], ["комментарий"]],
+        
+        # Операторы
+        "присваивания": [["идентификатор", ":=", "выражение"]],
+        "условный": [["if", "выражение", "then", "оператор", "else", "оператор"], ["if", "выражение", "then", "оператор"]],
+        "цикла": [["while", "выражение", "do", "оператор"]],
+        "цикла_фиксированный": [["for", "присваивания", "to", "выражение", "do", "оператор"]],
+        "составной": [["begin", "оператор_список", "end"]],
+        "ввода": [["read", "(", "идентификатор", "ввода_хвост", ")"]],
+        "ввода_хвост": [[",", "идентификатор", "ввода_хвост"], []],
+        "вывода": [["write", "(", "выражение", "вывода_хвост", ")"]],
+        "вывода_хвост": [[",", "выражение", "вывода_хвост"], []],
+        
+        # Выражения
+        "выражение": [["унарное"], ["сумма"], ["сумма", "знак_сравнения", "сумма"]],
+        "унарное": [["not", "множитель"]],
+        "знак_сравнения": [["="], ["<"], [">"], ["<="], [">="]],
+        
+        # Арифметические выражения
+        "сумма": [["произведение", "сумма_хвост"]],
+        "сумма_хвост": [["операция_сложения", "произведение", "сумма_хвост"], []],
+        "операция_сложения": [["+"], ["-"], ["or"]],
+        
+        "произведение": [["множитель", "произведение_хвост"]],
+        "произведение_хвост": [["операция_умножения", "множитель", "произведение_хвост"], []],
+        "операция_умножения": [["*"], ["/"], ["and"]],
+        
+        "множитель": [["идентификатор"], ["число"], ["логическая_константа"], ["(", "выражение", ")"]],
+        
+        # Лексемы
+        "идентификатор": [["буква", "ид_хвост"]],
+        "ид_хвост": [["буква", "ид_хвост"], ["цифра", "ид_хвост"], []],
+        "число": [["цифра", "число"], ["цифра"]],
+        "логическая_константа": [["true"], ["false"]],
+        "буква": [[c] for c in "abcdefghijklmnopqrstuvwxyz"],
+        "цифра": [[d] for d in "0123456789"],
+        
+        # Комментарии
+        "комментарий": [["{", "текст_комментария", "}"]],
+        "текст_комментария": [["символ", "текст_комментария"], []],
+        "символ": [[c] for c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ \t\n"]
+    }
+}
+
+
+    grammar222 = Grammar(grammar1)
+    grammar222.print_grammar()
+    grammar222.check_language_existence()
+    grammar222.remove_epsilon_rules()
+    grammar222.print_grammar()
+    grammar222.eliminate_chain_rules()
+    grammar222.eliminate_unreachable()
+    grammar222.eliminate_non_generating()
+    grammar222.eliminate_left_factoring()
+    grammar222.eliminate_immediate_left_recursion()
+    grammar222.print_grammar()
     # Создадим файл с тестовыми программами
-    test_programs = """
-    program var
-        a, b, c: %;
-    begin
-        a ass 5;
-        b ass 3;
-        c ass (a + b) * 2;
-        write(c)
-    end.
+    # test_programs = """
+    # program var
+    #     a, b, c: %;
+    # begin
+    #     a ass 5;
+    #     b ass 3;
+    #     c ass (a + b) * 2;
+    #     write(c)
+    # end.
 
-    program var
-        a, b: %;
-    begin
-        a ass 10;
-        b ass 20;
-        if a < b then
-            write(a)
-        else
-            write(b)
-    end.
+    # program var
+    #     a, b: %;
+    # begin
+    #     a ass 10;
+    #     b ass 20;
+    #     if a < b then
+    #         write(a)
+    #     else
+    #         write(b)
+    # end.
 
-    program var
-        flag1, flag2: $;
-    begin
-        flag1 ass true;
-        flag2 ass not flag1;
-        write(flag2)
-    end.
+    # program var
+    #     flag1, flag2: $;
+    # begin
+    #     flag1 ass true;
+    #     flag2 ass not flag1;
+    #     write(flag2)
+    # end.
 
-    program var
-        x, y: %; result: $;
-    begin
-        x ass 5;
-        y ass 10;
-        result ass (x < y) and (y > 0);
-        write(result)
-    end.
+    # program var
+    #     x, y: %; result: $;
+    # begin
+    #     x ass 5;
+    #     y ass 10;
+    #     result ass (x < y) and (y > 0);
+    #     write(result)
+    # end.
 
-    program var
-        a, b, c: $;
-    begin
-        a ass true;
-        b ass false;
-        c ass a or b;
-        write(c)
-    end.
+    # program var
+    #     a, b, c: $;
+    # begin
+    #     a ass true;
+    #     b ass false;
+    #     c ass a or b;
+    #     write(c)
+    # end.
 
-    program var
-        a, b, c: !;
-    begin
-        a ass 10.0;
-        b ass 3.0;
-        c ass a / b;
-        write(c)
-    end.
+    # program var
+    #     a, b, c: !;
+    # begin
+    #     a ass 10.0;
+    #     b ass 3.0;
+    #     c ass a / b;
+    #     write(c)
+    # end.
 
-    program var
-        i, sum: %;
-    begin
-        sum ass 0;
-        for i ass 1 to 5 do
-            sum ass sum + i;
-        write(sum)
-    end.
+    # program var
+    #     i, sum: %;
+    # begin
+    #     sum ass 0;
+    #     for i ass 1 to 5 do
+    #         sum ass sum + i;
+    #     write(sum)
+    # end.
 
-    program var
-        a: %;
-    begin
-        a ass 5;
-        while a > 0 do
-            a ass a - 1;
-        write(a)
-    end.
+    # program var
+    #     a: %;
+    # begin
+    #     a ass 5;
+    #     while a > 0 do
+    #         a ass a - 1;
+    #     write(a)
+    # end.
 
-    {9}
+    # {9}
 
-    program var
-        a, b: %; c: $;
-    begin
-        a ass 10;
-        b ass 20;
-        c ass a <= b;
-        write(c)
-    end.
+    # program var
+    #     a, b: %; c: $;
+    # begin
+    #     a ass 10;
+    #     b ass 20;
+    #     c ass a <= b;
+    #     write(c)
+    # end.
 
-    program var
-        a, b: %;
-    begin
-        a ass 10;
-        b ass 20;
-        if a < b then
-            if a = 10 then
-                write(100)
-            else
-                write(200)
-        else
-            write(300)
-    end.
+    # program var
+    #     a, b: %;
+    # begin
+    #     a ass 10;
+    #     b ass 20;
+    #     if a < b then
+    #         if a = 10 then
+    #             write(100)
+    #         else
+    #             write(200)
+    #     else
+    #         write(300)
+    # end.
 
-    {11}
+    # {11}
 
-    program var
-        a, b: %; c: !;
-    begin
-        a ass 10;
-        b ass 0;
-        c ass a / b;
-        write(c)
-    end.
+    # program var
+    #     a, b: %; c: !;
+    # begin
+    #     a ass 10;
+    #     b ass 0;
+    #     c ass a / b;
+    #     write(c)
+    # end.
 
-    program var
-        a: %; b: %;
-    begin
-        a ass 5;
-        b ass 10;
-        write(a)
-    end.
+    # program var
+    #     a: %; b: %;
+    # begin
+    #     a ass 5;
+    #     b ass 10;
+    #     write(a)
+    # end.
 
-    program var
-        a: %;
-    begin
-        a ass 5;
-        write(a)
-    end.
+    # program var
+    #     a: %;
+    # begin
+    #     a ass 5;
+    #     write(a)
+    # end.
 
-    program var
-        a, b: %;
-    begin
-        read(a, b);
-        a ass a + b;
-        write(a)
-    end.
-    """
-
-
-    # Запишем в файл
-    with open('./test_programs.tyap', 'w') as f:
-        f.write(test_programs)
+    # program var
+    #     a, b: %;
+    # begin
+    #     read(a, b);
+    #     a ass a + b;
+    #     write(a)
+    # end.
+    # """
 
 
-    # Функция для тестирования программы на синтаксический разбор
-    def test_syntax(text):
-        try:
-            lexer = Lexer(text)
-            parser = Parser(lexer)
-            parser.parse()
-            return "OK"
-        except Exception as e:
-            return str(e)
+    # # Запишем в файл
+    # with open('./test_programs.tyap', 'w') as f:
+    #     f.write(test_programs)
+
+
+    # # Функция для тестирования программы на синтаксический разбор
+    # def test_syntax(text):
+    #     try:
+    #         lexer = Lexer(text)
+    #         parser = Parser(lexer)
+    #         parser.parse()
+    #         return "OK"
+    #     except Exception as e:
+    #         return str(e)
     
-    def test_exec(text):
-        try:
-            lexer = Lexer(text)
-            parser = Parser(lexer)
-            interpreter = Interpreter(parser)
-            interpreter.interpret()
-            return "OK"
-        except Exception as e:
-            return str(e)
+    # def test_exec(text):
+    #     try:
+    #         lexer = Lexer(text)
+    #         parser = Parser(lexer)
+    #         interpreter = Interpreter(parser)
+    #         interpreter.interpret()
+    #         return "OK"
+    #     except Exception as e:
+    #         return str(e)
 
-    # Разделим по программам (по вхождениям 'program var')
-    program_list = test_programs.strip().split("program var")
-    program_list = ["program var" + p for p in program_list if p.strip()]
+    # # Разделим по программам (по вхождениям 'program var')
+    # program_list = test_programs.strip().split("program var")
+    # program_list = ["program var" + p for p in program_list if p.strip()]
 
-    # Проверим каждую
-    results = [test_syntax(p) for p in program_list]
-    print(results)
+    # # Проверим каждую
+    # results = [test_syntax(p) for p in program_list]
+    # print(results)
 
-    results1 = [test_exec(p) for p in program_list]
-    print(results1)
+    # results1 = [test_exec(p) for p in program_list]
+    # print(results1)
 
 
 if __name__ == '__main__':
     main()
+    
+{'nonterminals': {'A', 'B', "A'", 'S'}, 
+ 'terminals': {'a', 'b'}, 
+ 'productions': {
+     'A': [['a', "A'"], ['b', "A'"]], 
+     'B': [['b'], ['A', 'B']], 
+     'S': [['b'], ['A', 'B']], 
+     "A'": [['B', "A'"], []]}, 
+ 'start_symbol': 'S'}
