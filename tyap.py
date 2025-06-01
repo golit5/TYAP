@@ -225,9 +225,8 @@ class Grammar:
 
         # Восстанавливаем ε-правила, если они должны быть, но были удалены
         for nt in preserve_nullable:
-            if nt in self.productions and [] in self.productions[nt]:
-                if [] not in new_productions[nt]:
-                    new_productions[nt].append([])
+           if nt in self.productions and [] in self.productions[nt]:
+                new_productions.setdefault(nt, []).append([])
 
         self.productions = new_productions
 
@@ -479,15 +478,17 @@ class Grammar:
 
 # ---------- Лексер ----------
 KEYWORDS = {
-    "program", "var", "begin", "end", "int", "bool", "read", "write",
-    "if", "then", "else", "while", "do", "true", "false", "for", "to"
+    "program", "var", "begin", "end", "read", "write",
+    "if", "then", "else", "while", "do", "true", "false", "for", "to", "ass"
 }
 
 DELIMITERS = {
     '(', ')', ',', ';', ':', '=', '.', '{', '}', '+', '-', '*', '/', '>', '<', "<=", ">=", ":="
 }
 
-MULTI_CHAR_DELIMS = {":=", "<=", ">="}
+DATA_TYPES = {"%", "!", "$"}
+
+MULTI_CHAR_DELIMS = {"<=", ">="}
 
 class LexerFA:
     def __init__(self):
@@ -527,6 +528,11 @@ class LexerFA:
                     i += 1
                 elif c == '{':
                     state = 'COMMENT'
+                    i += 1
+                elif c in DATA_TYPES:
+                    self.tokens.append(c)
+                    self.token_types.append('DATA_TYPE')
+                    print(f"[LEX] DATA_TYPE: '{c}'")
                     i += 1
                 elif c in {':', '<', '>'}:
                     buffer = c
@@ -726,8 +732,8 @@ if __name__ == '__main__':
         "ввода_хвост", "вывода_хвост", "буква", "цифра", "комментарий"
     },
     "terminals": {
-        "program", "var", "begin", "end", "int", "bool", "read", "write", "if", "then",
-        "else", "while", "do", "for", "to", "true", "false", "not", ":=", "=", "<", ">", 
+        "program", "var", "begin", "end", "%", "!", "$", "read", "write", "if", "then",
+        "else", "while", "do", "for", "to", "true", "false", "not", "ass", "=", "<", ">", 
         "<=", ">=", "+", "-", "*", "/", "or", "and", "(", ")", ",", ":", ";", ".", "a", 
         "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", 
         "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", 
@@ -739,7 +745,7 @@ if __name__ == '__main__':
         "программа": [["program", "описание", ";", "тело", "."], ["комментарий", "program", "описание", ";", "тело", "."]],
         "описание": [["var", "идентификатор", "описание_хвост"]],
         "описание_хвост": [[",", "идентификатор", "описание_хвост"], [":", "тип"]],
-        "тип": [["int"], ["bool"]],
+        "тип": [["%"], ["!"], ["$"]],
         
         # Тело и операторы
         "тело": [["begin", "оператор_список", "end"], ["комментарий", "begin", "оператор_список", "end"]],
@@ -747,7 +753,7 @@ if __name__ == '__main__':
         "оператор": [["присваивания"], ["условный"], ["цикла"], ["цикла_фиксированный"], ["составной"], ["ввода"], ["вывода"], ["комментарий"]],
         
         # Операторы
-        "присваивания": [["идентификатор", ":=", "выражение"]],
+        "присваивания": [["идентификатор", "ass", "выражение"]],
         "условный": [["if", "выражение", "then", "оператор", "else", "оператор"], ["if", "выражение", "then", "оператор"]],
         "цикла": [["while", "выражение", "do", "оператор"]],
         "цикла_фиксированный": [["for", "присваивания", "to", "выражение", "do", "оператор"]],
@@ -801,12 +807,14 @@ if __name__ == '__main__':
     grammar222.print_grammar()
     parser = LL1Parser(grammar222.toDict())
 
-    code = "program var a, b: int; begin a := 1; end."
+    code = "program var a, b: %; begin a ass 1; end."
     lexer = LexerFA()
     lexer.lex(code)
     tokens = lexer.get_token_stream()
 
     print("\n[RESULT] Tokens:", tokens)
+    print("\n[RESULT] Identifiers:", lexer.get_identifier_table())
+    
 
     #parser = LL1Parser(grammar)
     try:
