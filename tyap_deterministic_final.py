@@ -1,4 +1,3 @@
-# Полная связка: Lexer + LL(1) Parser с тестами
 from collections import defaultdict, deque
 from typing import List, Dict, Tuple, Set
 import sys
@@ -43,7 +42,7 @@ class Grammar:
         Алгоритм 4.1: Проверка существования языка грамматики
         Возвращает True если язык существует (стартовый символ порождает терминальную строку)
         """
-        print("\n2.0 Проверка существования языка грамматики (алгоритм 4.1):")
+        print("\nПроверка существования языка грамматики:")
         N_prev = set()
         changed = True
         
@@ -75,7 +74,7 @@ class Grammar:
         После выполнения, self.productions и self.non_terminals будут очищены от бесполезных нетерминалов,
         которые не порождают терминальные строки.
         """
-        print("\n2.1 Устранение нетерминалов, не порождающих терминальные строки (алгоритм 4.2):")
+        print("\nУстранение нетерминалов, не порождающих терминальные строки:")
         non_generating_before = set(self.non_terminals) #Исходные нетерминалы
         
         generating = set() #Множество порождающих терминалов
@@ -132,7 +131,7 @@ class Grammar:
         
         Удаляет из грамматики символы (и правила), которые не достижимы из стартового символа.
         """
-        print("\n2.2 Устранение недостижимых символов (алгоритм 4.3):")
+        print("\nУстранение недостижимых символов:")
         unreachable_before = set(self.non_terminals)
         
         reachable = set([self.start_symbol])
@@ -185,7 +184,7 @@ class Grammar:
         self.terminals = self._collect_terminals()
 
     def remove_epsilon_rules(self):
-        print("\n2.3 Устранение ε-правил (алгоритм 4.4):")
+        print("\nУстранение ε-правил:")
         preserve_nullable = {
             "оператор_список", "сумма_хвост", "произведение_хвост", 
             "описание_хвост", "ввода_хвост", "вывода_хвост", 
@@ -246,7 +245,7 @@ class Grammar:
         
         Цепное правило: A -> B, где A и B - нетерминалы
         """
-        print("\n2.4 Устранение цепных правил (алгоритм 4.5):")
+        print("\nУстранение цепных правил:")
         # Подсчет цепных правил до устранения
         chain_rules_count_before = sum(1 for nt, prods in self.productions.items() 
                                      for prod in prods 
@@ -299,15 +298,55 @@ class Grammar:
         self.productions = new_productions
         self.non_terminals = set(new_productions.keys())
         self.terminals = self._collect_terminals()
+        
+    def eliminate_mixed_rules(self):
+        print("\nУстранение смешанных цепочек:")
+        #S -> A, a, B преобразуется в S -> A, N_a, B; N_a -> a
 
+        new_productions = {}
+        new_non_terminals = set(self.non_terminals)
+        terminal_to_nt = {}
 
-        new_nt_index = 0
+        for A in self.non_terminals:
+            for prod in self.productions.get(A, []):
+                for symbol in prod:
+                    if symbol in self.terminals and symbol not in terminal_to_nt:
+                        new_nt = f"N_{symbol}"
+                        terminal_to_nt[symbol] = new_nt
+                        new_non_terminals.add(new_nt)
+
+        for A in self.non_terminals:
+            new_productions[A] = []
+            for prod in self.productions.get(A, []):
+                if any(s in self.terminals for s in prod) and any(s in self.non_terminals for s in prod):
+                    new_prod = []
+                    for symbol in prod:
+                        if symbol in self.terminals:
+                            new_prod.append(terminal_to_nt[symbol]) 
+                        else:
+                            new_prod.append(symbol)
+                    new_productions[A].append(new_prod)
+                else:
+                    new_productions[A].append(prod)  
+
+        for term, nt in terminal_to_nt.items():
+            new_productions[nt] = [[term]]
+
+        self.productions = new_productions
+        self.non_terminals = new_non_terminals
+
+        print("Новые правила после устранения смешанных цепочек:")
+        for A in sorted(self.productions.keys()):
+            prods = self.productions[A]
+            print(f"{A} → ", end="")
+            print(" | ".join(" ".join(p) for p in prods))
+
         
     def eliminate_left_factoring(self):
             """
             Алгоритм 4.6: Устранение левой факторизации правил.
             """
-            print("\n2.5 Устранение левой факторизации (алгоритм 4.6):")
+            print("\nУстранение левой факторизации:")
             # Сбрасываем индекс для новых нетерминалов
             new_nt_index = 0  # <-- Добавлено: сброс индекса
             new_productions = copy.deepcopy(self.productions)  # <-- Используем глубокую копию
@@ -400,7 +439,7 @@ class Grammar:
         X  -> beta X'
         X' -> alpha X' | ε
         """
-        print("\n2.6 Устранение левой рекурсии (алгоритм 4.7):")
+        print("\nУстранение левой рекурсии:")
         # Сохраняем количество продукций и нетерминалов до обработки
         productions_count_before = sum(len(prods) for prods in self.productions.values())
         nonterminals_count_before = len(self.non_terminals)
@@ -691,18 +730,18 @@ class LL1Parser:
                 
                 # Для каждого терминала в FIRST(α)
                 for terminal in first_alpha - {'ε'}:
-                    if terminal in self.table[nt]:
+                    # if terminal in self.table[nt]:
                         # Вместо вызова ошибки, выбираем последнее правило (можно изменить логику)
-                        print(f"Предупреждение: конфликт в таблице разбора для {nt} -> {terminal}")
-                        print(f"Существующее: {self.table[nt][terminal]}, новое: {prod}")
+                        # print(f"Предупреждение: конфликт в таблице разбора для {nt} -> {terminal}")
+                        # print(f"Существующее: {self.table[nt][terminal]}, новое: {prod}")
                     self.table[nt][terminal] = prod
                 
                 # Если ε в FIRST(α), добавляем для всех терминалов из FOLLOW(A)
                 if 'ε' in first_alpha:
                     for terminal in self.follow[nt]:
-                        if terminal in self.table[nt]:
-                            print(f"Предупреждение: конфликт в таблице разбора для {nt} -> {terminal}")
-                            print(f"Существующее: {self.table[nt][terminal]}, новое: {prod}")
+                        # if terminal in self.table[nt]:
+                        #     print(f"Предупреждение: конфликт в таблице разбора для {nt} -> {terminal}")
+                        #     print(f"Существующее: {self.table[nt][terminal]}, новое: {prod}")
                         self.table[nt][terminal] = prod
 
     def first_of_sequence(self, symbols: List[str]) -> Set[str]:
@@ -815,41 +854,70 @@ if __name__ == '__main__':
         "символ": [[c] for c in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ \t\n"]
     }
     }
-
-    grammar222 = Grammar(grammar)
-    grammar222.print_grammar()
-
-    # Новый порядок преобразований:
-    if not grammar222.check_language_existence():
-        raise ValueError("Язык грамматики пуст")
-
-    grammar222.eliminate_non_generating()
-    grammar222.eliminate_unreachable()
-    grammar222.remove_epsilon_rules()
-    grammar222.eliminate_chain_rules()
-    grammar222.eliminate_left_factoring()
-    grammar222.eliminate_immediate_left_recursion()
-
-    grammar222.print_grammar()
-
-
-
-    parser = LL1Parser(grammar222.toDict())
-
-    code = "program var a, b: %; begin a ass 1; end."
-    lexer = LexerFA()
-    lexer.lex(code)
-    tokens = lexer.get_token_stream()
-
-    print("\n[RESULT] Tokens:", tokens)
-    print("\n[RESULT] Identifiers:", lexer.get_identifier_table())
     
-
-    #parser = LL1Parser(grammar)
+    grammar2 = {
+    "nonterminals": {"S", "A", "B", "C", "D"},
+    "terminals": {"a", "b", "c", "d"},
+    "start_symbol": "S",
+    "productions": {
+        "S": [["A", "b", "C"], ["D"]],
+        "A": [["B"], ["a"]],
+        "B": [["C"], ["b"]],
+        "C": [["c"]],
+        "D": [["d", "A"]]
+    }
+    }
+    
+    grammar22 = Grammar(grammar2)
+    grammar22.print_grammar()
+    grammar22.eliminate_mixed_rules()
+    
+    test = ["a", "b", "c"]
+    
+    parser = LL1Parser(grammar22.toDict())
+    
     try:
-        result = parser.parse(tokens)
+        result = parser.parse(test)
         print("\n[SUCCESS] Parse steps:")
         for lhs, rhs in result:
             print(f"{lhs} -> {' '.join(rhs)}")
     except SyntaxError as e:
         print("\n[ERROR]", e)
+
+    # grammar222 = Grammar(grammar)
+    # grammar222.print_grammar()
+
+    # # Новый порядок преобразований:
+    # if not grammar222.check_language_existence():
+    #     raise ValueError("Язык грамматики пуст")
+
+    # grammar222.eliminate_non_generating()
+    # grammar222.eliminate_unreachable()
+    # grammar222.remove_epsilon_rules()
+    # grammar222.eliminate_chain_rules()
+    # grammar222.eliminate_left_factoring()
+    # grammar222.eliminate_immediate_left_recursion()
+
+    # grammar222.print_grammar()
+
+
+
+    # parser = LL1Parser(grammar222.toDict())
+
+    # code = "program var a, b: %; begin a ass 1; end."
+    # lexer = LexerFA()
+    # lexer.lex(code)
+    # tokens = lexer.get_token_stream()
+
+    # print("\n[RESULT] Tokens:", tokens)
+    # print("\n[RESULT] Identifiers:", lexer.get_identifier_table())
+    
+
+    # #parser = LL1Parser(grammar)
+    # try:
+    #     result = parser.parse(tokens)
+    #     print("\n[SUCCESS] Parse steps:")
+    #     for lhs, rhs in result:
+    #         print(f"{lhs} -> {' '.join(rhs)}")
+    # except SyntaxError as e:
+    #     print("\n[ERROR]", e)
